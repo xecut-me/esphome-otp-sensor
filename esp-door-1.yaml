@@ -1,0 +1,190 @@
+esphome:
+  name: esp-door-1
+  friendly_name: esp_door_1
+  platformio_options:
+    build_flags: -DBOARD_HAS_PSRAM
+    board_build.arduino.memory_type: qio_opi
+    board_build.f_flash: 80000000L
+    board_build.flash_mode: qio
+
+
+external_components:
+  - source: github://xecut-me/esphome-otp-sensor
+    components: [ otp_sensor ]
+  # source: components
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+  # level: VERBOSE
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_key
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Esp-Door-1 Fallback Hotspot"
+    password: !secret ap_key
+
+captive_portal:
+
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: Europe/Belgrade
+    servers:
+     - 0.pool.ntp.org
+     - 1.pool.ntp.org
+     - 2.pool.ntp.org
+
+# lock output (is used to trigger physical lock)
+# on_turn_on action is used to automaticaly turn off after delay
+# not shown in HA
+switch:
+  - platform: gpio
+    pin: GPIO6
+    restore_mode: ALWAYS_OFF
+    internal: true
+    id: door_lock
+    inverted: True
+    name: "Door lock"
+    icon: "mdi:lock-outline"
+    on_turn_on:
+    - delay: 0.2s
+    - switch.turn_off: door_lock
+
+
+# Lock component represent lock in HA
+# `open_action` triggers output GPIO to open the `door_lock` if lock is in unlocked state
+# can be triggered from HA or by other components
+lock:
+  - platform: template
+    id: template_lock1
+    name: "Door Lock"
+    optimistic: True
+    open_action:
+      - if:
+          condition:
+            # Same syntax for is_unlocked
+            lock.is_unlocked: template_lock1
+          then:
+            switch.turn_on: door_lock
+    on_lock:
+      - logger.log: "Door Locked!"
+    on_unlock:
+      - logger.log: "Door Unlocked!"
+
+# uart receiver component
+# provides keypresses to key_collector by 1 byte
+uart:
+  baud_rate: 9600
+  rx_pin: GPIO5
+  debug:
+    direction: RX
+    dummy_receiver: true
+    after:
+      bytes: 1
+    sequence:
+      - lambda: |-
+          UARTDebug::log_string(direction, bytes);
+          id(pincode_reader).send_key(bytes[0]);
+
+
+# collects code and publish it to `code_template`
+# input should end with 'E', which is not included in published state
+# first publishes empty state to allow repeating last entered code
+key_collector:
+  - id: pincode_reader
+    min_length: 4
+    max_length: 8
+    end_keys: "E"
+    end_key_required: true
+    back_keys: "*"
+    clear_keys: "C"
+    allowed_keys: "P123T456M789BC0EOSLA"
+    timeout: 5s
+    on_progress:
+      - logger.log:
+          format: "input progress: '%s'"
+          args: [ 'x.c_str()']
+    on_result:
+      - logger.log:
+          format: "input result: '%s'"
+          args: [ 'x.c_str()']
+      - lambda: |-
+          id(code_template).publish_state("");
+          id(code_template).publish_state(x);
+    on_timeout:
+      - logger.log:
+          format: "input timeout: '%s'"
+          args: [ 'x.c_str()']
+
+
+# checking of code validity with TOTP
+# todo: ignore if time is not set
+# interval allows to use any code from +-interval*time_step
+# if code is valid open lock (if unlocked) and reset(state)
+binary_sensor:
+  - platform: otp_sensor
+    name: code_valid
+    id: code_valid
+    secret: !secret otp_secret
+    time_step: 30
+    interval: 3
+    sensor_id: code_template
+    on_press:
+      then:
+        - logger.log: Code Validated
+        - lock.open: template_lock1
+        - lambda: id(code_valid).publish_state(false);
+
+text_sensor:
+# used for pulishing entered code
+  - platform: template
+    name: "Code Sensor"
+    id: code_template
+# # debug fields to test code generation
+#   - platform: template
+#     name: time
+#     lambda: |-
+#       return id(sntp_time).now().strftime("%Y-%m-%d %H:%M");
+#   - platform: template
+#     name: code
+#     lambda: |-
+#       return id(code_valid).get_otp();
+#
+# # debug: used for testing codes
+#
+# text:
+#   - platform: template
+#     mode: password
+#     name: ha_input
+#     set_action:
+#       lambda: |-
+#         id(code_template).publish_state("");
+#         id(code_template).publish_state(x);
+
+# debug: used for opening door from HA
+button:
+  - platform: template
+    name: "Virt Exit Button"
+    id: exit_button
+    icon: "mdi:exit-run"
+    on_press:
+      then:
+        - logger.log: Button Pressed
+        - lock.open: template_lock1
