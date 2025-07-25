@@ -44,7 +44,7 @@ void TOTPBinarySensor::set_sensor(text_sensor::TextSensor *text_sensor) {
 void TOTPBinarySensor::dump_config() {
   LOG_BINARY_SENSOR("", "OTP Binary Sensor", this);
   LOG_TEXT_SENSOR("  ", "Sensor", this->sensor_);
-  ESP_LOGCONFIG(TAG, "  Secret: %s", this->secret_.c_str());
+  ESP_LOGCONFIG(TAG, "  Secret: " LOG_SECRET("%s"), this->secret_.c_str());
   ESP_LOGCONFIG(TAG, "  Interval: %d", this->interval_);
   ESP_LOGCONFIG(TAG, "  Time Step: %d", this->time_step_);
   ESP_LOGCONFIG(TAG, "  Digits: %d", this->digits_);
