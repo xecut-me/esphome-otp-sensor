@@ -21,7 +21,11 @@ void TOTPBinarySensor::set_sensor(text_sensor::TextSensor *text_sensor) {
   this->sensor_ = text_sensor;
   this->sensor_->add_on_state_callback([this](std::string sensor_value) {
     bool res = false;
-    this->publish_state(res);
+#if ESPHOME_VERSION_CODE >= VERSION_CODE(2025, 7, 3)
+      this->invalidate_state();
+#else
+      this->publish_state(res);
+#endif
     uint64_t step = (time(nullptr)/ this->time_step_);
 
     for (int i=0;i<=this->interval_;i++){
