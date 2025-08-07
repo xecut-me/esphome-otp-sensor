@@ -26,6 +26,12 @@ void TOTPBinarySensor::set_sensor(text_sensor::TextSensor *text_sensor) {
 #else
       this->publish_state(res);
 #endif
+    this->postfix = std::string();
+    if (sensor_value.length() < this->digits_) return;
+    if (sensor_value.length() > this->digits_) {
+        this->postfix = sensor_value.substr(this->digits_);
+        sensor_value.resize(this->digits_);
+    }
     uint64_t step = (time(nullptr)/ this->time_step_);
 
     for (int i=0;i<=this->interval_;i++){
