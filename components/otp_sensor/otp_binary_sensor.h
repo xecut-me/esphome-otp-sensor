@@ -21,7 +21,7 @@ class TOTPBinarySensor : public Component, public binary_sensor::BinarySensor {
   void set_time_step(int time_step) { this->time_step_ = time_step; }
   void set_digits(int digits) { this->digits_ = digits; }
 
-  std::string get_postfix();
+  std::string get_postfix() {return this->postfix;};
   std::string get_otp();
   std::string get_otp(uint64_t step);
   // template<typename T> void set_upper_threshold(T upper_threshold) { this->upper_threshold_ = upper_threshold; }
